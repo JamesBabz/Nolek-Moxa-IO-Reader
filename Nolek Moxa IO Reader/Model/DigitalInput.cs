@@ -23,8 +23,8 @@ namespace Nolek_Moxa_IO_Reader.Model
                 NotifyPropertyChanged("diIndex");
             }
         }
-        private int _diStatus;
-        public int diStatus
+        private bool _diStatus;
+        public bool diStatus
         {
             get => _diStatus;
             set
@@ -46,7 +46,7 @@ namespace Nolek_Moxa_IO_Reader.Model
         }
         private void SetEllipseColorBrush()
         {
-            if (diStatus == 1)
+            if (diStatus)
             {
                 EllipseColor = new SolidColorBrush(Colors.ForestGreen);
             }

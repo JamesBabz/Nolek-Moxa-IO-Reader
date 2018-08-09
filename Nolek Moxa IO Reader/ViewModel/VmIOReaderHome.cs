@@ -25,18 +25,18 @@ namespace Nolek_Moxa_IO_Reader.ViewModel
         public const UInt16 Port = 502;
         UInt32 Timeout = 1000;
         public string Password = "";
-        byte bytCount = 0, bytStartChannel = 0;
+        private byte DibytCount;
+        private byte DibytStartChannel = 0;
+        private byte RelaybytCount;
+        private byte RelaybytStartChannel = 0;
         Int32 dwShiftValue;
-        UInt32 i;
+        int i;
         Int32[] hConnection = new Int32[1];
 
         public ObservableCollection<DigitalInput> DIs { get; set; }
         public ObservableCollection<Relay> Relays { get; set; }
-        private HttpClient _httpClient;
         private SynchronizationContext uiContext;
-        public string HttpAddress = "http://192.168.127.254";
         public string IpAddress = "192.168.127.254";
-        private string _apiString;
 
         private Stopwatch _timer = Stopwatch.StartNew();
 
@@ -47,196 +47,269 @@ namespace Nolek_Moxa_IO_Reader.ViewModel
             set
             {
                 _response = value; NotifyPropertyChanged("Response");
-                SetIOData();
+                updateUI();
             }
         }
+
 
         public VmIOReaderHome()
         {
-            uiContext = SynchronizationContext.Current;
+
+            uiContext = SynchronizationContext.Current; // For ui update while threading
             DIs = new ObservableCollection<DigitalInput>();
             Relays = new ObservableCollection<Relay>();
-            SetupHTTPClient();
-            ret = MXIO_CS.MXEIO_Init();
-            ret = MXIO_CS.MXEIO_E1K_Connect(System.Text.Encoding.UTF8.GetBytes(IpAddress), Port, Timeout, hConnection, System.Text.Encoding.UTF8.GetBytes(Password));
-            testDelay();
-            DIs.Insert(0, new DigitalInput()
-            {
-                diIndex = 0,
-                diMode = 0,
-                diStatus = 0
-            });
-            DIs.Insert(1, new DigitalInput()
-            {
-                diIndex = 0,
-                diMode = 0,
-                diStatus = 0
-            });DIs.Insert(0, new DigitalInput()
-            {
-                diIndex = 0,
-                diMode = 0,
-                diStatus = 0
-            });
-            DIs.Insert(1, new DigitalInput()
-            {
-                diIndex = 1,
-                diMode = 0,
-                diStatus = 0
-            });
-            Relays.Insert(0, new Relay()
-            {
-                relayIndex = 0,
-                relayStatus = 0,
-                relayCurrentCount = 0,
-                relayCurrentCountReset = 0,
-                relayMode = 0,
-                relayTotalCount = 0
+            SetupConnection();
+            InitialGUISetup();
+            startDIListenerThread();
 
-            });
-            Relays.Insert(1, new Relay()
-            {
-                relayIndex = 1,
-                relayStatus = 0,
-                relayCurrentCount = 0,
-                relayCurrentCountReset = 0,
-                relayMode = 0,
-                relayTotalCount = 0
-
-            });
-            //StartDIListenerThread();
         }
 
         /// <summary>
-        /// Sets up the HttpClient with the required headers
+        /// Sets up the different gui elements on startup
         /// </summary>
-        private void SetupHTTPClient()
+        private void InitialGUISetup()
         {
-            _httpClient = new HttpClient();
-            _httpClient.DefaultRequestHeaders.Connection.Clear();
-            _httpClient.DefaultRequestHeaders.ConnectionClose = false;
-            _httpClient.DefaultRequestHeaders.Accept.Add(
-                new MediaTypeWithQualityHeaderValue("application/vdn.dac.v1"));
-            _apiString = HttpAddress + "/api/slot/0/io";
-            _httpClient.BaseAddress = new Uri(_apiString);
+            DISetup();
+            RelaySetup();
         }
 
-        private void StartDIListenerThread()
+        /// <summary>
+        /// Starts the connection to the IO Server
+        /// </summary>
+        private void SetupConnection()
         {
-            Thread t = new Thread(ApiListener);
-            t.IsBackground = true;
+            ret = MXIO_CS.MXEIO_Init();
+            ret = MXIO_CS.MXEIO_E1K_Connect(System.Text.Encoding.UTF8.GetBytes(IpAddress), Port, Timeout, hConnection,
+                System.Text.Encoding.UTF8.GetBytes(Password));
+        }
+
+        /// <summary>
+        /// Sets up all the Digital input related gui elements
+        /// </summary>
+        private void DISetup()
+        {
+            ret = MXIO_CS.E1K_DI_Reads(hConnection[0], DibytStartChannel, DibytCount, new UInt32[1]);
+            DibytCount = 0;
+            while (ret != 4004)
+            {
+                DibytCount++;
+                ret = MXIO_CS.E1K_DI_Reads(hConnection[0], DibytStartChannel, DibytCount, new UInt32[1]);
+            }
+            DibytCount--;
+            Response = "method=create,type=di,amount=" + DibytCount;
+        }
+
+        /// <summary>
+        /// Sets up all the Relay related gui elements
+        /// </summary>
+        private void RelaySetup()
+        {
+            RelaybytCount = 0;
+            ret = MXIO_CS.E1K_DO_Reads(hConnection[0], RelaybytStartChannel, RelaybytCount, new UInt32[1]);
+            while (ret != 4004)
+            {
+                RelaybytCount++;
+                ret = MXIO_CS.E1K_DO_Reads(hConnection[0], RelaybytStartChannel, RelaybytCount, new UInt32[1]);
+            }
+            RelaybytCount--;
+            Response = "method=create,type=relay,amount=" + RelaybytCount;
+        }
+
+        /// <summary>
+        /// Updates the UI depending on the response recieved from anywhere in the class
+        /// </summary>
+        private void updateUI()
+        {
+            string[] data = Response.Split(',');
+            string[] method = data[0].Split('=');
+            string[] type;
+            string[] amount;
+            string[] objectID;
+            string[] propertyName;
+            string[] propertyValue;
+
+            switch (method[1]) // What method should be executed
+            {
+                case "create":
+                    type = data[1].Split('=');
+                    amount = data[2].Split('=');
+                    CreateObjects(type[1], int.Parse(amount[1])); // Create an object of the specified type with the specified parameters
+                    break;
+                case "update":
+                    type = data[1].Split('=');
+                    objectID = data[2].Split('=');
+                    propertyName = data[3].Split('=');
+                    propertyValue = data[4].Split('=');
+                    UpdateObject(type[1], int.Parse(objectID[1]), propertyName[1], propertyValue[1]); // Updates a property of an object of the specified type with the specified parameters
+                    break;
+
+            }
+
+
+        }
+
+        /// <summary>
+        /// Updates a single object with the information given
+        /// </summary>
+        /// <param name="type">What type of object is it (eg. di or relay)</param>
+        /// <param name="id">The id of the object</param>
+        /// <param name="propName">The name of the property to update</param>
+        /// <param name="propVal">The value to give to the property</param>
+        private void UpdateObject(string type, int id, string propName, string propVal)
+        {
+            if (type.Equals("di"))
+            {
+                DigitalInput currDi = DIs[id];
+                switch (propName)
+                {
+                    case "diStatus":
+                        currDi.diStatus = Convert.ToBoolean(propVal);
+                        break;
+                    case "diMode":
+                        currDi.diMode = Convert.ToInt32(propVal);
+                        break;
+
+                }
+            }
+            else if (type.Equals("relay"))
+            {
+                Relay currRelay = Relays[id];
+                switch (propName)
+                {
+                    case "relayStatus":
+                        currRelay.relayStatus = Convert.ToBoolean(propVal);
+                        break;
+                    case "relayMode":
+                        currRelay.relayMode = Convert.ToInt32(propVal);
+                        break;
+                    case "relayCurrentCount":
+                        currRelay.relayCurrentCount = Convert.ToInt64(propVal);
+                        break;
+                    case "relayTotalCount":
+                        currRelay.relayTotalCount = Convert.ToInt64(propVal);
+                        break;
+                    case "relayCurrentCountReset":
+                        currRelay.relayCurrentCountReset = Convert.ToInt32(propVal);
+                        break;
+                }
+            }
+        }
+
+        /// <summary>
+        /// Creates multiple object of a specified type
+        /// </summary>
+        /// <param name="type">The type of object to create (eg. di or relay)</param>
+        /// <param name="amount">How many to create</param>
+        private void CreateObjects(string type, int amount)
+        {
+            for (int j = 0; j < amount; j++)
+            {
+                if (type.Equals("di"))
+                {
+                    DIs.Insert(j, new DigitalInput()
+                    {
+                        diIndex = j,
+                        diMode = 0,
+                        diStatus = false
+                    });
+                }
+                else if (type.Equals(("relay")))
+                {
+                    Relays.Insert(j, new Relay()
+                    {
+                        relayIndex = j,
+                        relayMode = 0,
+                        relayStatus = GetRelayStatus(j),
+                        relayCurrentCount = 0,
+                        relayCurrentCountReset = 0,
+                        relayTotalCount = 0
+                    });
+                }
+            }
+        }
+
+        /// <summary>
+        /// Gets the current status of the relay. Used at startup to prevent accidental shutdowns
+        /// </summary>
+        /// <param name="index">the index of the relay</param>
+        /// <returns>The current state of the relay</returns>
+        private bool GetRelayStatus(int index)
+        {
+            RelaybytCount = 1;
+            RelaybytStartChannel = (byte)(index);
+            UInt32[] dwGetDOValue = new UInt32[1];
+            ret = MXIO_CS.E1K_DO_Reads(hConnection[0], RelaybytStartChannel, RelaybytCount, dwGetDOValue);
+            if (ret == MXIO_CS.MXIO_OK)
+            {
+                return dwGetDOValue[0] == 1;
+            }
+            return false;
+        }
+
+        /// <summary>
+        /// Called on a click
+        /// </summary>
+        /// <param name="index">The index of the button pressed</param>
+        public void UpdateRelay(int index)
+        {
+            SetRelay(index);
+        }
+
+        /// <summary>
+        /// Sets the status of a single relay
+        /// </summary>
+        /// <param name="index">index of the relay</param>
+        private void SetRelay(int index)
+        {
+            RelaybytCount = 1;
+            RelaybytStartChannel = (byte)(index);
+            UInt32 dwSetDOValue = (uint)(Relays[index].relayStatus ? 0 : 1);
+            ret = MXIO_CS.E1K_DO_Writes(hConnection[0], RelaybytStartChannel, RelaybytCount, dwSetDOValue);
+            if (ret != MXIO_CS.MXIO_OK)
+            {
+                Console.WriteLine("ERROR: " + ret);
+            }
+            bool isOn = dwSetDOValue != 0;
+            Response = "method=update,type=relay,id=" + index + ",field=relayStatus,value=" + isOn;
+        }
+
+        /// <summary>
+        /// Creates the listener thread for the DIs
+        /// </summary>
+        public void startDIListenerThread()
+        {
+            Thread t = new Thread(DiListenerThread) { IsBackground = true };
             t.Start();
         }
 
-        private void ApiListener()
+        /// <summary>
+        /// A listener for when anything changes about the Digital inputs
+        /// </summary>
+        private void DiListenerThread()
         {
-            string oldDiResp = "";
-            string oldRelayResp = "";
+            bool isFirstRun = true;
+            DibytStartChannel = 0;
+            UInt32[] dwGetDIValue = new UInt32[1];
+            UInt32[] dwOldValue = new UInt32[1];
+            dwOldValue[0] = 0;
             while (true)
             {
-
-                try
+                ret = MXIO_CS.E1K_DI_Reads(hConnection[0], DibytStartChannel, DibytCount, dwGetDIValue);
+                if (ret == MXIO_CS.MXIO_OK)
                 {
-                    string newDiResp = _httpClient.GetStringAsync(_apiString + "/di").Result;
-
-                    if (oldDiResp != newDiResp)
+                    if (dwOldValue[0] != dwGetDIValue[0] || isFirstRun)
                     {
-                        oldDiResp = newDiResp;
-                        uiContext.Send(x => Response = newDiResp, null);
-                        Console.WriteLine("Old register: " + _timer.Elapsed);
-                        continue;
-                    }
-                    string newRelayResp = _httpClient.GetStringAsync(_apiString + "/relay").Result;
-                    if (oldRelayResp != newRelayResp)
-                    {
-                        oldRelayResp = newRelayResp;
-                        uiContext.Send(x => Response = newRelayResp, null);
-                        continue;
-                    }
-                    Thread.Sleep(100);
-                }
-                catch (Exception e)
-                {
-                    Console.WriteLine(e.ToString());
-                }
-            }
-        }
-
-        private void SetIOData()
-        {
-            Response r = JsonConvert.DeserializeObject<Response>(Response);
-            if (r.io.di != null)
-            {
-                DIs.Clear();
-                foreach (DigitalInput di in r.io.di)
-                {
-                    DIs.Insert(di.diIndex, di);
-                }
-            }
-            if (r.io.relay != null)
-            {
-                Relays.Clear();
-                foreach (Relay relay in r.io.relay)
-                {
-                    Relays.Insert(relay.relayIndex, relay);
-                }
-            }
-
-        }
-
-        public void UpdateRelay(int index)
-        {
-            //OldMethod(index);
-            NewMethod(index);
-            
-        }
-
-        private void NewMethod(int index)
-        {
-            bytCount = 1;
-            bytStartChannel = (byte) (0+index);
-            Console.WriteLine("Start new update method");
-            TimeSpan startTime = _timer.Elapsed;
-            //Set Ch{0}~ch{1} DO Direction DO Mode value = ON
-            UInt32 dwSetDOValue = (uint) (Relays[index].relayStatus == 0 ? 1 : 0);
-            Console.WriteLine(dwSetDOValue);
-            ret = MXIO_CS.E1K_DO_Writes(hConnection[0], bytStartChannel, bytCount, dwSetDOValue);
-            Console.WriteLine(ret);
-            if (ret == MXIO_CS.MXIO_OK)
-            {
-            }
-            Console.WriteLine("End new update method");
-            TimeSpan elapsedTime = _timer.Elapsed - startTime;
-            Console.WriteLine("Elapsed time NEW: " + elapsedTime);
-
-        }
-
-        private void OldMethod(int index)
-        {
-            Console.WriteLine("Start old update method");
-            TimeSpan startTime = _timer.Elapsed;
-            foreach (Relay relay in Relays)
-            {
-                if (relay.relayIndex == index)
-                {
-                    relay.relayStatus = relay.relayStatus == 0 ? relay.relayStatus = 1 : relay.relayStatus = 0;
-                }
-            }
-            Dictionary<string, object> relayList = new Dictionary<string, object>(){
-                {"slot", "0"},
-                {"io", new Dictionary<string,Object>()
-                    {
-                        {"relay", Relays}
+                        dwOldValue[0] = dwGetDIValue[0];
+                        for (i = 0, dwShiftValue = 0; i < DibytCount; i++, dwShiftValue++)
+                        {
+                            bool isOn = (dwGetDIValue[0] & (1 << dwShiftValue)) != 0;
+                            uiContext.Send(x => Response = "method=update,type=di,id=" + i + ",field=diStatus,value=" + isOn, null);
+                        }
                     }
                 }
-            };
-            var rel = JsonConvert.SerializeObject(relayList);
-            var buffer = System.Text.Encoding.UTF8.GetBytes(rel);
-            var byteContent = new ByteArrayContent(buffer);
-            byteContent.Headers.ContentType = new MediaTypeHeaderValue("application/json");
-            var response = _httpClient.PutAsync(_apiString + "/relay", byteContent).Result;
-            Console.WriteLine("End old update method");
-            TimeSpan elapsedTime = _timer.Elapsed - startTime;
-            Console.WriteLine("Elapsed time OLD: " + elapsedTime);
+                Thread.Sleep(100);
+                isFirstRun = false;
+            }
         }
 
 
@@ -255,43 +328,6 @@ namespace Nolek_Moxa_IO_Reader.ViewModel
         }
         #endregion
 
-        public void testDelay()
-        {
-            Console.WriteLine(ret);
-            Thread t = new Thread(testThread) { IsBackground = true };
-            t.Start();
-            //MXIO_CS.MXEIO_Disconnect(hConnection[0]);
-            //Console.WriteLine("Button pressed: " + _timer.Elapsed);
-            //UpdateRelay(5);
-        }
-
-        private void testThread()
-        {
-            bytCount = 5;
-            bytStartChannel = 0;
-            UInt32[] dwGetDIValue = new UInt32[1];
-            UInt32[] dwOldValue = new UInt32[1];
-            dwOldValue[0] = 0;
-            bool[] isOn = new bool[bytCount];
-            while (true)
-            {
-                ret = MXIO_CS.E1K_DI_Reads(hConnection[0], bytStartChannel, bytCount, dwGetDIValue);
-                if (ret == MXIO_CS.MXIO_OK)
-                {
-                    if (dwOldValue[0] != dwGetDIValue[0])
-                    {
-                        Console.WriteLine(ret);
-                        dwOldValue[0] = dwGetDIValue[0];
-                        for (i = 0, dwShiftValue = 0; i < bytCount; i++, dwShiftValue++)
-                        {
-                            isOn[i] = (dwGetDIValue[0] & (1 << dwShiftValue)) != 0;
-                            //TODO handle the result (change DIs value to bool?)
-                        }
-                        Console.WriteLine("New register: " + _timer.Elapsed);
-                    }
-                }
-                Thread.Sleep(100);
-            }
-        }
+        
     }
 }

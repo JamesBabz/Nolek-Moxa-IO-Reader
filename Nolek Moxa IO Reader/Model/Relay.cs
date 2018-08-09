@@ -27,8 +27,8 @@ namespace Nolek_Moxa_IO_Reader.Model
                 NotifyPropertyChanged("relayMode");
             }
         }
-        private int _relayStatus;
-        public int relayStatus
+        private bool _relayStatus;
+        public bool relayStatus
         {
             get => _relayStatus;
             set
@@ -71,7 +71,7 @@ namespace Nolek_Moxa_IO_Reader.Model
 
         private void SetButtonColor()
         {
-            if (relayStatus == 1)
+            if (relayStatus)
             {
                 EllipseColor = new SolidColorBrush(Colors.ForestGreen);
             }

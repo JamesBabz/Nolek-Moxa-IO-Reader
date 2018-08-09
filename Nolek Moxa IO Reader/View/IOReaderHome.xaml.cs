@@ -38,7 +38,7 @@ namespace Nolek_Moxa_IO_Reader
         private void TestMethod(object sender, RoutedEventArgs e)
         {
             _model.UpdateRelay(1);
-           // _model.testDelay();
+           // _model.startDIListenerThread();
         }
 
         private void RelayButton_OnClick(object sender, RoutedEventArgs e)
