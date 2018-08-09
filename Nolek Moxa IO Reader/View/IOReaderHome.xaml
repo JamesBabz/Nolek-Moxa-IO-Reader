@@ -1,0 +1,72 @@
+﻿<UserControl x:Class="Nolek_Moxa_IO_Reader.IOReaderHome"
+      xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+      xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+      xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" 
+      xmlns:d="http://schemas.microsoft.com/expression/blend/2008" 
+      xmlns:local="clr-namespace:Nolek_Moxa_IO_Reader"
+      xmlns:vm="clr-namespace:Nolek_Moxa_IO_Reader.ViewModel"
+      mc:Ignorable="d" 
+      d:DesignHeight="450" d:DesignWidth="800">
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="auto"/>
+            <RowDefinition Height="auto"/>
+            <RowDefinition Height="auto"/>
+            <RowDefinition Height="auto"/>
+        </Grid.RowDefinitions>
+
+        <TextBlock Text="Digital Inputs" Padding="0,30,0,10" HorizontalAlignment="Center" FontSize="24"/>
+        <ItemsControl Grid.Row="1" Name="icDiState">
+            <ItemsControl.ItemsPanel>
+                <ItemsPanelTemplate>
+                    <UniformGrid Columns="6"/>
+                </ItemsPanelTemplate>
+            </ItemsControl.ItemsPanel>
+            <ItemsControl.ItemTemplate>
+                <DataTemplate>
+                    <UniformGrid Rows="2" Height="auto">
+                        <Ellipse Fill="{Binding EllipseColor}" Width="60" Stretch="UniformToFill"/>
+                        <TextBlock Text="{Binding diIndex}" HorizontalAlignment="Center"  Margin="0"/>
+                    </UniformGrid>
+                </DataTemplate>
+            </ItemsControl.ItemTemplate>
+        </ItemsControl>
+
+        <!--<TextBlock Grid.Row="2" Text="Digital Inputs New" Padding="0,30,0,10" HorizontalAlignment="Center" FontSize="24"/>
+        <ItemsControl Grid.Row="3" Name="icDiStateNew">
+            <ItemsControl.ItemsPanel>
+                <ItemsPanelTemplate>
+                    <UniformGrid Columns="6"/>
+                </ItemsPanelTemplate>
+            </ItemsControl.ItemsPanel>
+            <ItemsControl.ItemTemplate>
+                <DataTemplate>
+                    <UniformGrid Rows="2" Height="auto">
+                        <Ellipse Fill="{Binding EllipseColor}" Width="60" Stretch="UniformToFill"/>
+                        <TextBlock Text="{Binding diIndex}" HorizontalAlignment="Center"  Margin="0"/>
+                    </UniformGrid>
+                </DataTemplate>
+            </ItemsControl.ItemTemplate>
+        </ItemsControl>-->
+
+        <TextBlock Grid.Row="2" Text="Relays" Padding="0,30,0,10" HorizontalAlignment="Center" FontSize="24"/>
+        <ItemsControl Grid.Row="3" Name="icRelayState" >
+            <ItemsControl.ItemsPanel>
+                <ItemsPanelTemplate>
+                    <UniformGrid Columns="6"/>
+                </ItemsPanelTemplate>
+            </ItemsControl.ItemsPanel>
+            <ItemsControl.ItemTemplate>
+                <DataTemplate>
+                    <UniformGrid Rows="2" Height="auto">
+                        <Ellipse Fill="{Binding EllipseColor}" Width="60" Stretch="UniformToFill"/>
+                        <Button Content="{Binding relayIndex}" HorizontalAlignment="Center" Margin="0" Height="30" Width="50" Click="RelayButton_OnClick"/>
+                    </UniformGrid>
+                </DataTemplate>
+            </ItemsControl.ItemTemplate>
+        </ItemsControl>
+        <Button Content="TEST" Click="TestMethod"></Button>
+
+
+    </Grid>
+</UserControl>
