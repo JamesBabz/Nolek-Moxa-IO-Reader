@@ -26,9 +26,11 @@ namespace Nolek_Moxa_IO_Reader.ViewModel
         UInt32 Timeout = 1000;
         public string Password = "";
         private byte DibytCount;
-        private byte DibytStartChannel = 0;
+        private byte DibytStartChannel;
+        private byte DiTotalAmount;
         private byte RelaybytCount;
-        private byte RelaybytStartChannel = 0;
+        private byte RelaybytStartChannel;
+        private byte RelayTotalAmount;
         Int32 dwShiftValue;
         int i;
         Int32[] hConnection = new Int32[1];
@@ -36,7 +38,7 @@ namespace Nolek_Moxa_IO_Reader.ViewModel
         public ObservableCollection<DigitalInput> DIs { get; set; }
         public ObservableCollection<Relay> Relays { get; set; }
         private SynchronizationContext uiContext;
-        public string IpAddress = "192.168.127.254";
+        public string IpAddress = "192.168.127.253";
 
         private Stopwatch _timer = Stopwatch.StartNew();
 
@@ -54,14 +56,13 @@ namespace Nolek_Moxa_IO_Reader.ViewModel
 
         public VmIOReaderHome()
         {
-
             uiContext = SynchronizationContext.Current; // For ui update while threading
             DIs = new ObservableCollection<DigitalInput>();
             Relays = new ObservableCollection<Relay>();
             SetupConnection();
             InitialGUISetup();
             startDIListenerThread();
-
+            startRelayControlThread();
         }
 
         /// <summary>
@@ -79,8 +80,8 @@ namespace Nolek_Moxa_IO_Reader.ViewModel
         private void SetupConnection()
         {
             ret = MXIO_CS.MXEIO_Init();
-            ret = MXIO_CS.MXEIO_E1K_Connect(System.Text.Encoding.UTF8.GetBytes(IpAddress), Port, Timeout, hConnection,
-                System.Text.Encoding.UTF8.GetBytes(Password));
+            ret = MXIO_CS.MXEIO_E1K_Connect(System.Text.Encoding.UTF8.GetBytes(IpAddress), Port, Timeout,
+                    hConnection, System.Text.Encoding.UTF8.GetBytes(Password));
         }
 
         /// <summary>
@@ -96,7 +97,8 @@ namespace Nolek_Moxa_IO_Reader.ViewModel
                 ret = MXIO_CS.E1K_DI_Reads(hConnection[0], DibytStartChannel, DibytCount, new UInt32[1]);
             }
             DibytCount--;
-            Response = "method=create,type=di,amount=" + DibytCount;
+            DiTotalAmount = DibytCount;
+            Response = "method=create,type=di,amount=" + DiTotalAmount;
         }
 
         /// <summary>
@@ -112,8 +114,30 @@ namespace Nolek_Moxa_IO_Reader.ViewModel
                 ret = MXIO_CS.E1K_DO_Reads(hConnection[0], RelaybytStartChannel, RelaybytCount, new UInt32[1]);
             }
             RelaybytCount--;
-            Response = "method=create,type=relay,amount=" + RelaybytCount;
+            RelayTotalAmount = RelaybytCount;
+            Response = "method=create,type=relay,amount=" + RelayTotalAmount;
         }
+
+        private void startRelayControlThread()
+        {
+            Thread t = new Thread(ControlRelayStatuses) {IsBackground = true};
+            t.Start();
+        }
+
+        private void ControlRelayStatuses()
+        {
+            while (true)
+            {
+                for (int j = 0; j < RelayTotalAmount; j++)
+                {
+                    uiContext.Send(x => Response = "method=update,type=relay,id=" + j + ",field=diStatus,value=" + GetRelayStatus(j), null);
+                }
+                Console.WriteLine("Relay has been controlled");
+                Thread.Sleep(10000);
+            }
+            
+        }
+
 
         /// <summary>
         /// Updates the UI depending on the response recieved from anywhere in the class
@@ -269,8 +293,8 @@ namespace Nolek_Moxa_IO_Reader.ViewModel
             {
                 Console.WriteLine("ERROR: " + ret);
             }
-            bool isOn = dwSetDOValue != 0;
-            Response = "method=update,type=relay,id=" + index + ",field=relayStatus,value=" + isOn;
+                bool isOn = dwSetDOValue != 0;
+                Response = "method=update,type=relay,id=" + index + ",field=relayStatus,value=" + isOn;
         }
 
         /// <summary>
@@ -294,13 +318,13 @@ namespace Nolek_Moxa_IO_Reader.ViewModel
             dwOldValue[0] = 0;
             while (true)
             {
-                ret = MXIO_CS.E1K_DI_Reads(hConnection[0], DibytStartChannel, DibytCount, dwGetDIValue);
+                ret = MXIO_CS.E1K_DI_Reads(hConnection[0], DibytStartChannel, DiTotalAmount, dwGetDIValue);
                 if (ret == MXIO_CS.MXIO_OK)
                 {
                     if (dwOldValue[0] != dwGetDIValue[0] || isFirstRun)
                     {
                         dwOldValue[0] = dwGetDIValue[0];
-                        for (i = 0, dwShiftValue = 0; i < DibytCount; i++, dwShiftValue++)
+                        for (i = 0, dwShiftValue = 0; i < DiTotalAmount; i++, dwShiftValue++)
                         {
                             bool isOn = (dwGetDIValue[0] & (1 << dwShiftValue)) != 0;
                             uiContext.Send(x => Response = "method=update,type=di,id=" + i + ",field=diStatus,value=" + isOn, null);
@@ -309,6 +333,11 @@ namespace Nolek_Moxa_IO_Reader.ViewModel
                 }
                 Thread.Sleep(100);
                 isFirstRun = false;
+                //Try to setup connection if lost
+                if (ret == MXIO_CS.EIO_SOCKET_DISCONNECT)
+                {
+                    SetupConnection();
+                }
             }
         }
 
@@ -328,6 +357,6 @@ namespace Nolek_Moxa_IO_Reader.ViewModel
         }
         #endregion
 
-        
+
     }
 }

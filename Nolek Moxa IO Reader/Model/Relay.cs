@@ -35,7 +35,7 @@ namespace Nolek_Moxa_IO_Reader.Model
             {
                 _relayStatus = value;
                 NotifyPropertyChanged("relayStatus");
-                SetButtonColor();
+                SetEllipseColor();
             }
         }
         private long _relayTotalCount;
@@ -69,7 +69,7 @@ namespace Nolek_Moxa_IO_Reader.Model
             }
         }
 
-        private void SetButtonColor()
+        private void SetEllipseColor()
         {
             if (relayStatus)
             {
